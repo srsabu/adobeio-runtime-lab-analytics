@@ -11,7 +11,7 @@
  * either express or implied.  See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
+ 
 var Alexa = require('alexa-sdk');   //Alexa SDK
 
 var states = {
@@ -27,37 +27,17 @@ var API_KEY = '';
 var ANALYTICS_COMPANY = '';
 /* provided */
 
-// Analytics SDK
-var analytics = require("adobe-analytics")
-
-//Supported Metrics
-var METRICS = {
-    'pageviews': "metrics/pageviews",
-    'page views': "metrics/pageviews",
-    'visitors': "metrics/visitors",
-    'visits':"metrics/visits",
-    'bounces':"metrics/bounces",
-    'bounce rate': "metrics/bouncerate",
-    'average page depth':'metrics/averagepagedepth',
-};
-
-//Measurements of Metrics
-var MEASUREMENT = {
-    'metrics/bouncerate': "percent",
-    'metrics/averagepagedepth': "pages"
-};
-
 //Speech strings
 var languageStrings = {
     "en-US": {
         "translation": {
             "WELCOME" : "Welcome to Adobe Analytics.. Which report suite would you like to use? %s.",
             "WELCOME_REPROMPT" : "You can choose from the following report suites %s.",
-            "REPORT_SUITE_SELECTED" : "Ok, using the %s report suite. How can I help you?.",
-            "REPORT_SUITE_SELECTED_REPROMPT" : "Currently, I can tell you information about the following metrics: %s. For example, you can ask me, how many page views this month?",
+            "REPORT_SUITE_SELECTED" : "Ok, using the %s report suite. You will now need to program me to handle a report request.",
+            "REPORT_SUITE_SELECTED_REPROMPT" : " You will now need to program me to handle a report request.",
             "UNKNOWN_COMMAND_RSID_SELECTION" : "I'm sorry, I could not find that report suite. Which report suite would you like to use? %s.",
             "UNKNOWN_COMMAND_REPROMPT_RSID_SELECTION" : "Which report suite would you like to use? %s.",
-            "UNKNOWN_COMMAND_QUERY" : "I'm sorry, I did not understand that request?",
+            "UNKNOWN_COMMAND_QUERY" : "I'm sorry, I did not understand that request?",            
             "UNKNOWN_COMMAND_REPROMPT_QUERY" : "Currently, I can tell you information about the following metrics: %s. For example, you can ask me, how many page views this month?",
             "QUERY_REPROMPT" : "You can ask for another report or say stop to end the session.",
             "API_ERROR" : "Sorry, Adobe Analytics experienced an error. Please try again later.",
@@ -71,30 +51,29 @@ var languageStrings = {
     }
 };
 
-// Create default handlers
-var newSessionHandlers = {
-    'LaunchRequest': function () {
-        //Skill was launched
+/**
+ * Get the list of report suites
+ */
+function getReportSuites(token, reportSuitesResponseCallback) {
+    //Create API headers
+    var headers = {
+        "Authorization": "Bearer " + token,
+        "x-api-key": API_KEY,
+        "x-proxy-company": ANALYTICS_COMPANY
+    };
 
-        //Set RSID selection state
-        this.handler.state = states.STATE_RSID_SELECTION;
+    var analytics = require('adobe-analytics');
 
-        //Store local scope
-        var that = this;
+    analytics.config(headers).then(function (api) {
+        api.collections.findAll({expansion: "name", limit: "50"}).then(function (result) {
+            var data = JSON.parse(result["data"]);
+            var reportSuites = data.content;
+            console.log(JSON.stringify(reportSuites));
+            reportSuitesResponseCallback(null, reportSuites);
+        })
 
-        //Get a list of report suites
-        getReportSuites(this.event.session.user.accessToken, function reportSuitesResponseCallback(err, reportSuites) {
-            //Get a comma separated list of the report suites
-            var reportSuiteList = getReportsSuitesListFromObject(reportSuites);
-            console.log("Reportsuite list " + reportSuiteList);
-
-            that.attributes['reportSuites'] = reportSuites;
-            that.attributes['speechOutput'] = that.t("WELCOME", reportSuiteList);
-            that.attributes['repromptSpeech'] = that.t("WELCOME_REPROMPT", reportSuiteList);
-            that.emit(':ask', that.attributes['speechOutput'], that.attributes['repromptSpeech']);
-        });
-    }
-};
+    })
+}
 
 // Create a new handler for the report suite selection state
 var rsidSelectionHandlers = Alexa.CreateStateHandler(states.STATE_RSID_SELECTION, {
@@ -113,14 +92,14 @@ var rsidSelectionHandlers = Alexa.CreateStateHandler(states.STATE_RSID_SELECTION
             //We found a match!
 
             //Enter the query state
-            this.handler.state = states.STATE_QUERY;
+            //this.handler.state = states.STATE_QUERY;
 
             //Store the selected report suite in session
             this.attributes['selectedReportSuite'] = matchingReportSuite;
 
-            //Tell user they can now ask for data
+            //Tell use they can now ask for data
             var speechOutput = this.t("REPORT_SUITE_SELECTED", matchingReportSuite.name);
-            var reprompt = this.t("REPORT_SUITE_SELECTED_REPROMPT", getAllMetricsText());
+            var reprompt = this.t("REPORT_SUITE_SELECTED_REPROMPT");
             this.emit(':ask', speechOutput, reprompt);
         }else{
             //We were unable to match the spoken word to a report suite
@@ -166,42 +145,6 @@ var rsidSelectionHandlers = Alexa.CreateStateHandler(states.STATE_RSID_SELECTION
 });
 
 /**
- * Returns a comma separated list of report suites loaded..
- */
-function getReportsSuitesListFromObject(reportSuites) {
-    var reportSuiteList = '';
-    for (var key in reportSuites) {
-        var reportSuite = reportSuites[key];
-        reportSuiteList += reportSuite.name + ", ";
-    }
-
-    return reportSuiteList;
-}
-
-/**
- * Get the list of report suites
- */
-function getReportSuites(token, reportSuitesResponseCallback) {
-    //Create API headers
-    var headers = {
-        "Authorization": "Bearer " + token,
-        "x-api-key": API_KEY,
-        "x-proxy-company": ANALYTICS_COMPANY
-    };
-
-    var analytics = require('adobe-analytics');
-
-    analytics.config(headers).then(function (api) {
-        api.collections.findAll({expansion: "name", limit: "50"}).then(function (result) {
-            var data = JSON.parse(result["data"]);
-            var reportSuites = data.content;
-            console.log(JSON.stringify(reportSuites));
-            reportSuitesResponseCallback(null, reportSuites);
-        })
-    })
-}
-
-/**
  * Tries to match a report suite with the spoken name
  */
 function matchReportSuite(spokenLiteral, reportSuites) {
@@ -222,6 +165,46 @@ function matchReportSuite(spokenLiteral, reportSuites) {
     }
 }
 
+/**
+ * Returns a comma separated list of report suites loaded..
+ */
+function getReportsSuitesListFromObject(reportSuites) {
+    var reportSuiteList = '';
+    for (var key in reportSuites) {
+        var reportSuite = reportSuites[key];
+        reportSuiteList += reportSuite.name + ", ";
+    }
+
+    return reportSuiteList;
+}
+
+// Create default handlers
+var newSessionHandlers = {
+    'LaunchRequest': function () {
+        //Skill was launched
+
+        //Skill was launched
+
+        //Set RSID selection state
+        this.handler.state = states.STATE_RSID_SELECTION;
+
+        //Store local scope
+        var that = this;
+
+        //Get a list of report suites
+        getReportSuites(this.event.session.user.accessToken, function reportSuitesResponseCallback(err, reportSuites) {
+            //Get a comma separated list of the report suites
+            var reportSuiteList = getReportsSuitesListFromObject(reportSuites);
+            console.log("Reportsuite list " + reportSuiteList);
+
+            that.attributes['reportSuites'] = reportSuites;
+            that.attributes['speechOutput'] = that.t("WELCOME", reportSuiteList);
+            that.attributes['repromptSpeech'] = that.t("WELCOME_REPROMPT", reportSuiteList);
+            that.emit(':ask', that.attributes['speechOutput'], that.attributes['repromptSpeech']);
+        });
+    }
+};
+
 var main = function (event) {
     console.log('ALEXA Event', event.request.type + '!');
 
@@ -241,7 +224,8 @@ var main = function (event) {
                 alexaSDK.APP_ID = APP_ID;
                 alexaSDK.resources = languageStrings;
                 alexaSDK.registerHandlers(newSessionHandlers, rsidSelectionHandlers);
-                return alexaSDK.execute();
+
+             return alexaSDK.execute();
             } catch (err) {
                 console.log(err);
                 reject(err.toString());
